@@ -135,9 +135,10 @@ HOST_CFLAGS = $(DEFAULT_CFLAGS) $(CFLAGS)
 PROGRESS := progress.c progress.h
 SOC_INFO := soc_info.c soc_info.h
 FEL_LIB  := fel_lib.c fel_lib.h
+THUNKS   := thunk.c thunk.h thunks/fel-to-spl-thunk.h thunks/fel-to-spl-thunk-armv5.h
 SPI_FLASH:= fel-spiflash.c fel-spiflash.h fel-remotefunc-spi-data-transfer.h
 
-sunxi-fel: fel.c fit_image.c thunks/fel-to-spl-thunk.h $(PROGRESS) $(SOC_INFO) $(FEL_LIB) $(SPI_FLASH)
+sunxi-fel: fel.c fit_image.c $(THUNKS) $(PROGRESS) $(SOC_INFO) $(FEL_LIB) $(SPI_FLASH)
 	$(CC) $(HOST_CFLAGS) $(LIBUSB_CFLAGS) $(ZLIB_CFLAGS) $(LDFLAGS) -o $@ \
 		$(filter %.c,$^) $(LIBS) $(LIBUSB_LIBS) $(ZLIB_LIBS) -lfdt
 
@@ -164,13 +165,13 @@ ARM_ELF_FLAGS += -mno-thumb-interwork -fno-stack-protector -fno-toplevel-reorder
 ARM_ELF_FLAGS += -Wstrict-prototypes -Wno-format-nonliteral -Wno-format-security
 
 jtag-loop.elf: jtag-loop.c jtag-loop.lds
-	$(CROSS_CC) -g $(ARM_ELF_FLAGS) $< -nostdlib -o $@ -T jtag-loop.lds -Wl,-N
+	$(CROSS_CC) -g $(ARM_ELF_FLAGS) -march=armv5te $< -nostdlib -o $@ -T jtag-loop.lds -Wl,-N
 
 fel-sdboot.elf: fel-sdboot.S fel-sdboot.lds
-	$(CROSS_CC) -g $(ARM_ELF_FLAGS) $< -nostdlib -o $@ -T fel-sdboot.lds -Wl,-N
+	$(CROSS_CC) -g $(ARM_ELF_FLAGS) -march=armv5te $< -nostdlib -o $@ -T fel-sdboot.lds -Wl,-N
 
 uart0-helloworld-sdboot.elf: uart0-helloworld-sdboot.c uart0-helloworld-sdboot.lds
-	$(CROSS_CC) -g $(ARM_ELF_FLAGS) $< -nostdlib -o $@ -T uart0-helloworld-sdboot.lds -Wl,-N
+	$(CROSS_CC) -g $(ARM_ELF_FLAGS) -march=armv5te $< -nostdlib -o $@ -T uart0-helloworld-sdboot.lds -Wl,-N
 
 boot_head_sun3i.elf: boot_head.S boot_head.lds
 	$(CROSS_CC) -g $(ARM_ELF_FLAGS) $< -nostdlib -o $@ -T boot_head.lds -Wl,-N -DMACHID=0x1094

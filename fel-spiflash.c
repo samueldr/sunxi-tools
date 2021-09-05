@@ -85,6 +85,7 @@ void fel_writel(feldev_handle *dev, uint32_t addr, uint32_t val);
 #define H6_CCM_SPI_BGR              (0x03001000 + 0x96C)
 #define H6_CCM_SPI0_GATE_RESET      (1 << 0 | 1 << 16)
 
+#define SUNIV_GPC_SPI0              (2)
 #define SUNXI_GPC_SPI0              (3)
 #define SUN50I_GPC_SPI0             (4)
 
@@ -96,27 +97,30 @@ void fel_writel(feldev_handle *dev, uint32_t addr, uint32_t val);
 
 #define SUN6I_TCR_XCH               (1U << 31)
 
-#define SUN4I_SPI0_CCTL             (spi_base(dev) + 0x1C)
-#define SUN4I_SPI0_CTL              (spi_base(dev) + 0x08)
-#define SUN4I_SPI0_RX               (spi_base(dev) + 0x00)
-#define SUN4I_SPI0_TX               (spi_base(dev) + 0x04)
-#define SUN4I_SPI0_FIFO_STA         (spi_base(dev) + 0x28)
-#define SUN4I_SPI0_BC               (spi_base(dev) + 0x20)
-#define SUN4I_SPI0_TC               (spi_base(dev) + 0x24)
+static uint32_t spi0_base;
 
-#define SUN6I_SPI0_CCTL             (spi_base(dev) + 0x24)
-#define SUN6I_SPI0_GCR              (spi_base(dev) + 0x04)
-#define SUN6I_SPI0_TCR              (spi_base(dev) + 0x08)
-#define SUN6I_SPI0_FIFO_STA         (spi_base(dev) + 0x1C)
-#define SUN6I_SPI0_MBC              (spi_base(dev) + 0x30)
-#define SUN6I_SPI0_MTC              (spi_base(dev) + 0x34)
-#define SUN6I_SPI0_BCC              (spi_base(dev) + 0x38)
-#define SUN6I_SPI0_TXD              (spi_base(dev) + 0x200)
-#define SUN6I_SPI0_RXD              (spi_base(dev) + 0x300)
+#define SUN4I_SPI0_CCTL             (spi0_base + 0x1C)
+#define SUN4I_SPI0_CTL              (spi0_base + 0x08)
+#define SUN4I_SPI0_RX               (spi0_base + 0x00)
+#define SUN4I_SPI0_TX               (spi0_base + 0x04)
+#define SUN4I_SPI0_FIFO_STA         (spi0_base + 0x28)
+#define SUN4I_SPI0_BC               (spi0_base + 0x20)
+#define SUN4I_SPI0_TC               (spi0_base + 0x24)
+
+#define SUN6I_SPI0_CCTL             (spi0_base + 0x24)
+#define SUN6I_SPI0_GCR              (spi0_base + 0x04)
+#define SUN6I_SPI0_TCR              (spi0_base + 0x08)
+#define SUN6I_SPI0_FIFO_STA         (spi0_base + 0x1C)
+#define SUN6I_SPI0_MBC              (spi0_base + 0x30)
+#define SUN6I_SPI0_MTC              (spi0_base + 0x34)
+#define SUN6I_SPI0_BCC              (spi0_base + 0x38)
+#define SUN6I_SPI0_TXD              (spi0_base + 0x200)
+#define SUN6I_SPI0_RXD              (spi0_base + 0x300)
 
 #define CCM_SPI0_CLK_DIV_BY_2       (0x1000)
 #define CCM_SPI0_CLK_DIV_BY_4       (0x1001)
 #define CCM_SPI0_CLK_DIV_BY_6       (0x1002)
+#define CCM_SPI0_CLK_DIV_BY_32      (0x100f)
 
 static uint32_t gpio_base(feldev_handle *dev)
 {
@@ -203,8 +207,23 @@ static bool spi0_init(feldev_handle *dev)
 		return false;
 	}
 
+	/*
+	 * suniv has the SPI0 base in the same position with A10/A13/A20, but it's
+	 * a sun6i-style SPI controller.
+	 */
+	if (!spi_is_sun6i(dev) || soc_info->soc_id == 0x1663)
+		spi0_base = 0x01c05000;
+	else
+		spi0_base = 0x01c68000;
+
 	/* Setup SPI0 pins muxing */
 	switch (soc_info->soc_id) {
+	case 0x1663: /* Allwinner F1C100s/F1C600/R6/F1C100A/F1C500 */
+		gpio_set_cfgpin(dev, PC, 0, SUNIV_GPC_SPI0);
+		gpio_set_cfgpin(dev, PC, 1, SUNIV_GPC_SPI0);
+		gpio_set_cfgpin(dev, PC, 2, SUNIV_GPC_SPI0);
+		gpio_set_cfgpin(dev, PC, 3, SUNIV_GPC_SPI0);
+		break;
 	case 0x1625: /* Allwinner A13 */
 	case 0x1680: /* Allwinner H3 */
 	case 0x1681: /* Allwinner V3s */
@@ -287,6 +306,27 @@ static bool spi0_init(feldev_handle *dev)
 		writel(reg_val, SUN4I_SPI0_CTL);
 	}
 
+	if (soc_info->soc_id != 0x1663) {
+		/* 24MHz from OSC24M */
+		writel((1 << 31), CCM_SPI0_CLK);
+		/* divide by 4 */
+		writel(CCM_SPI0_CLK_DIV_BY_4,
+		       spi_is_sun6i(dev) ? SUN6I_SPI0_CCTL :
+					   SUN4I_SPI0_CCTL);
+	} else {
+		/*
+		 * suniv doesn't have module clock for SPI0 and the
+		 * clock source is AHB clock. The code will also
+		 * configure AHB clock at 200MHz.
+		 */
+		/* Set PLL6 to 600MHz */
+		writel(0x80041400, 0x01c20028);
+		/* PLL6:AHB:APB = 6:2:1 */
+		writel(0x00003180, 0x01c20054);
+		/* divide by 32 */
+		writel(CCM_SPI0_CLK_DIV_BY_32, SUN6I_SPI0_CCTL);
+	}
+
 	return true;
 }
 
@@ -355,9 +395,7 @@ void aw_fel_spiflash_read(feldev_handle *dev,
 	memset(cmdbuf, 0, max_chunk_size);
 	aw_fel_write(dev, cmdbuf, soc_info->spl_addr, max_chunk_size);
 
-	if (!spi0_init(dev))
-		return;
-
+	spi0_init(dev);
 	prepare_spi_batch_data_transfer(dev, soc_info->spl_addr);
 
 	progress_start(progress, len);
@@ -483,8 +521,7 @@ void aw_fel_spiflash_write(feldev_handle *dev,
 		exit(1);
 	}
 
-	if (!spi0_init(dev))
-		return;
+	spi0_init(dev);
 
 	progress_start(progress, len);
 	while (len > 0) {
@@ -528,9 +565,7 @@ void aw_fel_spiflash_info(feldev_handle *dev)
 	unsigned char buf[] = { 0, 4, 0x9F, 0, 0, 0, 0x0, 0x0 };
 	void *backup = backup_sram(dev);
 
-	if (!spi0_init(dev))
-		return;
-
+	spi0_init(dev);
 	aw_fel_write(dev, buf, soc_info->spl_addr, sizeof(buf));
 	prepare_spi_batch_data_transfer(dev, soc_info->spl_addr);
 	aw_fel_remotefunc_execute(dev, NULL);
