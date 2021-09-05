@@ -265,6 +265,7 @@ soc_info_t soc_info_table[] = {
 		.arch_version = 5,
 		.scratch_addr = 0x1000,
 		.thunk_addr   = 0xb400, .thunk_size = 0x200,
+		.sram_size    = 48 * 1024, // ?? quoted as similar to A10 in a kernel commit
 		.swap_buffers = f1c100s_sram_swap_buffers,
 		/* No SID */
 	},{
